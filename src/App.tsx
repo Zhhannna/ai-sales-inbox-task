@@ -48,7 +48,7 @@ function InboxPage() {
         <div className="panel-heading"><h2 id="messages-heading">Latest messages</h2><span className="muted">Deterministic demo data</span></div>
         {state === "loading" && <StateMessage>Loading inbox…</StateMessage>}
         {state === "error" && <StateMessage>Could not load the inbox. Check that the API is running.</StateMessage>}
-        {state === "ready" && <ul className="message-list">{messages.map((message) => <MessageRow key={message.id} message={message} />)}</ul>}
+        {state === "ready" && (messages.length === 0 ? <p className="state-message">No messages yet.</p> : <ul className="message-list">{messages.map((message) => <MessageRow key={message.id} message={message} />)}</ul>)}
       </section>
     </main>
   );
@@ -73,6 +73,9 @@ function MessageRow({ message }: { message: Message }) {
 function DetailPage({ messageId }: { messageId: string }) {
   const [message, setMessage] = useState<Message | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [fields, setFields] = useState({ product: "", quantity: "", material: "", budget: "" });
+  const [busy, setBusy] = useState<"extract" | "save" | null>(null);
+  const [formError, setFormError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -98,9 +101,38 @@ function DetailPage({ messageId }: { messageId: string }) {
           </dl>
           <div className="message-body">{message.body}</div>
         </article>
-        <aside className="panel placeholder-panel" aria-label="Lead extraction status">
+        <aside className="panel placeholder-panel" aria-label="Lead details">
           <p className="eyebrow">Next step</p>
-          <p className="placeholder" role="status">Lead extraction not implemented yet.</p>
+          {formError && <p role="alert" className="form-error">{formError}</p>}
+          <form className="lead-form" onSubmit={async (event) => {
+            event.preventDefault(); setFormError(""); setBusy("save");
+            try {
+              await api.createLead({ sourceMessageId: messageId, product: fields.product, quantity: Number(fields.quantity), material: fields.material || null, budget: fields.budget === "" ? null : Number(fields.budget) });
+              window.location.assign("/pipeline");
+            } catch (error) { setFormError(error instanceof Error ? error.message : "Could not save lead."); }
+            finally { setBusy(null); }
+          }}>
+            <button type="button" disabled={busy !== null} onClick={async () => {
+              setFormError(""); setBusy("extract");
+              try {
+                const extracted = await api.extract(messageId);
+                const hasData = Object.values(extracted).some((value) => value !== null && value !== undefined && value !== "");
+                if (!hasData) { setFormError("No details were extracted. Enter the lead details manually."); return; }
+                setFields((current) => ({
+                  product: current.product === "" ? extracted.product ?? current.product : current.product,
+                  quantity: current.quantity === "" && extracted.quantity != null ? String(extracted.quantity) : current.quantity,
+                  material: current.material === "" ? extracted.material ?? current.material : current.material,
+                  budget: current.budget === "" && extracted.budget != null ? String(extracted.budget) : current.budget,
+                }));
+              } catch (error) { setFormError(error instanceof Error ? error.message : "Extraction failed."); }
+              finally { setBusy(null); }
+            }}>{busy === "extract" ? "Extracting…" : "Extract with AI"}</button>
+            <label>Product<input required value={fields.product} onChange={(event) => setFields({ ...fields, product: event.target.value })} /></label>
+            <label>Quantity<input required type="number" min="1" step="1" value={fields.quantity} onChange={(event) => setFields({ ...fields, quantity: event.target.value })} /></label>
+            <label>Material<input value={fields.material} onChange={(event) => setFields({ ...fields, material: event.target.value })} /></label>
+            <label>Budget<input type="number" min="0" step="any" value={fields.budget} onChange={(event) => setFields({ ...fields, budget: event.target.value })} /></label>
+            <button type="submit" disabled={busy !== null}>{busy === "save" ? "Saving…" : "Save lead"}</button>
+          </form>
         </aside>
       </section>
     </main>
@@ -110,6 +142,8 @@ function DetailPage({ messageId }: { messageId: string }) {
 function PipelinePage() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  const [saving, setSaving] = useState<string | null>(null);
+  const [actionError, setActionError] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -126,14 +160,20 @@ function PipelinePage() {
         <div className="panel-heading"><h2 id="pipeline-heading">Leads</h2></div>
         {state === "loading" && <StateMessage>Loading pipeline…</StateMessage>}
         {state === "error" && <StateMessage>Could not load the pipeline.</StateMessage>}
-        {state === "ready" && (leads.length === 0 ? <p className="state-message">No leads yet.</p> : <ul className="lead-list">{leads.map((lead) => <LeadCard key={lead.id} lead={lead} />)}</ul>)}
+        {actionError && <p role="alert" className="form-error">{actionError}</p>}
+        {state === "ready" && (leads.length === 0 ? <p className="state-message">No leads yet.</p> : <ul className="lead-list">{leads.map((lead) => <LeadCard key={lead.id} lead={lead} disabled={saving === lead.id} onContact={async () => {
+          setSaving(lead.id); setActionError("");
+          try { const updated = await api.markContacted(lead.id); setLeads((items) => items.map((item) => item.id === updated.id ? updated : item)); }
+          catch (error) { setActionError(error instanceof Error ? error.message : "Could not update lead."); }
+          finally { setSaving(null); }
+        }} />)}</ul>)}
       </section>
     </main>
   );
 }
 
-function LeadCard({ lead }: { lead: Lead }) {
-  return <li className="lead-card"><div><h3>{lead.product}</h3><p>{lead.quantity} unit{lead.quantity === 1 ? "" : "s"}{lead.material ? ` · ${lead.material}` : ""}</p><span className="muted">{lead.status} · {lead.budget === null ? "Budget unknown" : `${lead.budget}`}</span></div></li>;
+function LeadCard({ lead, disabled, onContact }: { lead: Lead; disabled: boolean; onContact: () => void }) {
+  return <li className="lead-card"><div><h3>{lead.product}</h3><p>{lead.quantity} unit{lead.quantity === 1 ? "" : "s"}{lead.material ? ` · ${lead.material}` : ""}</p><span className="muted">{lead.status} · {lead.budget === null ? "Budget unknown" : `${lead.budget}`}</span>{lead.status === "NEW" && <button type="button" disabled={disabled} onClick={onContact}>{disabled ? "Saving…" : "Mark as contacted"}</button>}</div></li>;
 }
 
 export function App() {

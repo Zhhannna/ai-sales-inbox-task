@@ -61,6 +61,12 @@ h3 { font-size: .94rem; margin: 0 0 3px; }
 .message-facts dd { margin: 0; }
 .placeholder-panel { padding: 24px; }
 .placeholder { color: #718078; font-size: .95rem; margin: 18px 0 0; }
+.lead-form { display: grid; gap: 14px; margin-top: 20px; }
+.lead-form label { color: #43534b; display: grid; font-size: .85rem; font-weight: 700; gap: 5px; }
+.lead-form input { border: 1px solid #cbd8cf; border-radius: 8px; color: #17211f; font: inherit; min-height: 42px; padding: 8px 10px; width: 100%; }
+.lead-form button, .lead-card button { background: #0c8f71; border: 0; border-radius: 8px; color: white; cursor: pointer; font: inherit; font-weight: 700; min-height: 42px; padding: 8px 14px; }
+.lead-form button:disabled, .lead-card button:disabled { cursor: wait; opacity: .6; }
+.form-error { background: #fff1ef; border-radius: 8px; color: #9e3028; margin: 12px; padding: 10px 12px; }
 .lead-list { list-style: none; margin: 0; padding: 0; }
 .lead-list .lead-card { border: 0; border-bottom: 1px solid #e9eeea; border-radius: 0; margin: 0; padding: 20px 24px; }
 .lead-list .lead-card:last-child { border-bottom: 0; }
@@ -81,4 +87,5 @@ h3 { font-size: .94rem; margin: 0 0 3px; }
   .message-preview { max-width: 52vw; }
   .detail-grid { grid-template-columns: 1fr; }
   .message-detail { padding: 22px 18px; }
+  .topbar { flex-wrap: wrap; }
 }
